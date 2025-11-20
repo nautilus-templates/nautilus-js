@@ -26,6 +26,24 @@ FROM stagex/user-cpio@sha256:9c8bf39001eca8a71d5617b46f8c9b4f7426db41a052f198d73
 FROM stagex/user-socat@sha256:4d1b7a403eba65087a3f69200d2644d01b63f0ea81ef171cedc17de490c8c9a0 AS user-socat
 FROM stagex/user-jq@sha256:0c75672e97f54b83661aaa498e053340305e79cdc2004a40d92b7bf5ce906e9c AS user-jq
 FROM stagex/user-nit@sha256:60b6eef4534ea6ea78d9f29e4c7feb27407b615424f20ad8943d807191688be7 AS user-nit
+FROM alpine:3.19 AS alpine-libs
+RUN apk add --no-cache libstdc++ libgcc
+FROM oven/bun:1-alpine AS bun-deps
+WORKDIR /app
+COPY src/nautilus-server/bun/package.json /app/package.json
+COPY src/nautilus-server/bun/bun.lock /app/bun.lock
+RUN bun install --no-progress
+
+# Build standalone Bun binary
+FROM oven/bun:1-alpine AS bun-build
+WORKDIR /app
+COPY src/nautilus-server/bun/ /app/
+COPY --from=bun-deps /app/node_modules /app/node_modules
+# there use the server main file name
+RUN bun build --compile --minify --sourcemap ./elysia_server.ts --outfile nautilus-bun-server
+
+FROM oven/bun:1-alpine AS bun-stage
+
 
 FROM scratch AS base
 COPY --from=core-busybox . /
@@ -54,29 +72,40 @@ COPY . .
 WORKDIR /src/nautilus-server
 ENV OPENSSL_STATIC=true
 ENV TARGET=x86_64-unknown-linux-musl
-ARG ENCLAVE_APP
-ENV RUSTFLAGS="-C target-feature=+crt-static -C relocation-model=static"
-RUN cargo build --locked --no-default-features --features $ENCLAVE_APP --release --target "$TARGET"
+ENV RUSTFLAGS=""
+RUN cargo build --release --target "$TARGET"
 
 WORKDIR /build_cpio
 ENV KBUILD_BUILD_TIMESTAMP=1
 RUN mkdir initramfs/
+RUN mkdir -p initramfs/etc/ssl/certs
 # Built-in as of latest linux-nitro
 # COPY --from=user-linux-nitro /nsm.ko initramfs/nsm.ko
 COPY --from=core-busybox . initramfs
 COPY --from=core-python . initramfs
 COPY --from=core-musl . initramfs
-COPY --from=core-ca-certificates /etc/ssl/certs initramfs
+COPY --from=core-ca-certificates /etc/ssl/certs initramfs/etc/ssl/certs
 COPY --from=core-busybox /bin/sh initramfs/sh
 COPY --from=user-jq /bin/jq initramfs
-COPY --from=user-socat /bin/socat . initramfs
+COPY --from=user-socat /bin/socat initramfs/
 COPY --from=user-nit /bin/init initramfs
-RUN cp /src/nautilus-server/target/${TARGET}/release/nautilus-server initramfs
 RUN cp /src/nautilus-server/traffic_forwarder.py initramfs/
 RUN cp /src/nautilus-server/run.sh initramfs/
+# Copy the compiled Bun binary (standalone executable)
+COPY --from=bun-build /app/nautilus-bun-server initramfs/nautilus-bun-server
+COPY --from=bun-build /app/allowed_endpoints.yaml initramfs/allowed_endpoints.yaml
+RUN chmod +x initramfs/nautilus-bun-server
+RUN mkdir -p initramfs/lib
+COPY --from=alpine-libs /usr/lib/libstdc++.so.6 initramfs/lib/libstdc++.so.6
+COPY --from=alpine-libs /usr/lib/libgcc_s.so.1 initramfs/lib/libgcc_s.so.1
+COPY --from=core-libunwind /usr/lib/libunwind.so.8 initramfs/lib/libunwind.so.8
+COPY --from=alpine-libs /usr/lib/*.so* initramfs/lib/
+COPY --from=core-libunwind /usr/lib/*.so* initramfs/lib/
+RUN sh -c 'set -eux; f=$(find /src/nautilus-server/target/${TARGET}/release -maxdepth 3 -name "libnautilus_server.so" | head -n1); cp "$f" initramfs/lib/libnautilus_server.so'
 
 COPY <<-EOF initramfs/etc/environment
-SSL_CERT_FILE=/ca-certificates.crt
+SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+SSL_CERT_DIR=/etc/ssl/certs
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/
 EOF
 

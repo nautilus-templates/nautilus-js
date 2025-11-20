@@ -6,34 +6,14 @@ authors = ["Mysten Labs <build@mystenlabs.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/MystenLabs/nautilus"
 
-[workspace]
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 serde_json = "1.0.140"
 serde_bytes = "0.11"
 serde = "1.0"
-serde_repr = "0.1"
-
-tokio = { version = "1.43.0", features = ["full"] }
-tracing = "0.1"
-axum = { version = "0.7", features = ["macros"] }
 rand = "0.8.5"
-reqwest = { version = "0.11", features = ["json"] }
-anyhow = "1.0"
-serde_yaml = "0.9.34"
-tower-http = { version = "0.6.0", features = ["cors"] }
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "d1fcb853196c3de7888ed8fad74f419b8c8fbe3b", features = ["aes"] }
-nsm_api = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api.git/", rev = "8ec7eac72bbb2097f1058ee32c13e1ff232f13e8", package="aws-nitro-enclaves-nsm-api", optional = false }
+nsm_api = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api.git/", rev = "8ec7eac72bbb2097f1058ee32c13e1ff232f13e8", package="aws-nitro-enclaves-nsm-api" }
 bcs = "0.1.6"
-lazy_static = "1.4"
-uuid = { version = "1.0", features = ["v4"] }
-regex = { version = "1.5", optional = true }
-
-sui-sdk-types = { version = "0.1.0", features = ["serde", "hash"], optional = true }
-sui-crypto = { version = "0.1.0", features = ["ed25519"], optional = true }
-seal-sdk = { git = "https://github.com/MystenLabs/seal", rev = "cdb6ddf104eca6055d69080608da010a83d736bf", package = "seal-sdk", optional = true }
-
-[features]
-weather-example = []
-twitter-example = ["regex"]
-seal-example = ["sui-crypto", "sui-sdk-types", "seal-sdk"]

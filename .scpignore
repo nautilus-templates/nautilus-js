@@ -1,0 +1,40 @@
+# Git
+.github/
+
+# Build artifacts
+target/
+dist/
+build/
+*.o
+*.so
+*.dylib
+*.dll
+
+# Dependencies
+node_modules/
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env.local
+.env.*.local
+
+# Cache
+.cache/
+.npm/
+.cargo/
+
+# System
+.DS_Store
+Thumbs.db 
+
+**/target/

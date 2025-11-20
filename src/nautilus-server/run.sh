@@ -13,15 +13,31 @@
 set -e # Exit immediately if a command exits with a non-zero status
 echo "run.sh script is running"
 export PYTHONPATH=/lib/python3.11:/usr/local/lib/python3.11/lib-dynload:/usr/local/lib/python3.11/site-packages:/lib
-export LD_LIBRARY_PATH=/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/lib:/usr/lib:$LD_LIBRARY_PATH
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+export SSL_CERT_DIR=/etc/ssl/certs
 
 echo "Script completed."
 # Assign an IP address to local loopback
 busybox ip addr add 127.0.0.1/32 dev lo
 busybox ip link set dev lo up
+busybox ip addr add 127.0.0.64/32 dev lo || true
 
 # Add a hosts record, pointing target site calls to local loopback
 echo "127.0.0.1   localhost" > /etc/hosts
+echo "127.0.0.64   api.twitter.com" >> /etc/hosts
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # == ATTENTION: code should be generated here that parses allowed_endpoints.yaml and populate domains here ===
@@ -41,8 +57,25 @@ echo "$JSON_RESPONSE" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > /tmp/kvpair
 
 # == ATTENTION: code should be generated here that added all hosts to forward traffic ===
 # Traffic-forwarder-block
+python3 /traffic_forwarder.py 127.0.0.64 443 3 8101 &
+
+
+
+
+
+
+
+
+
+
+
 
 # Listens on Local VSOCK Port 3000 and forwards to localhost 3000
 socat VSOCK-LISTEN:3000,reuseaddr,fork TCP:localhost:3000 &
 
-/nautilus-server
+
+export PORT=3000
+export NAUTILUS_LIB_PATH=/lib/libnautilus_server.so
+
+# Execute the compiled Bun binary directly (like Rust version)
+/nautilus-bun-server

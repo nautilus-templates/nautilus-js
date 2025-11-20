@@ -1,41 +1,50 @@
 REGISTRY := local
+-include .env
+SRC_FILES := $(shell git ls-files src)
+ENCLAVE_MEMORY ?= 768M
 
-.DEFAULT_GOAL :=
+.DEFAULT_GOAL := default
 .PHONY: default
 default: out/nitro.eif
 
 out:
-	mkdir out
+	mkdir -p out
 
-out/nitro.eif: out $(shell git ls-files src)
-	docker build \
+out/nitro.eif: $(SRC_FILES) | out
+	@DOCKER_CMD="docker build \
 		--tag $(REGISTRY)/enclaveos \
-		--progress=plain \
 		--platform linux/amd64 \
 		--output type=local,rewrite-timestamp=true,dest=out\
 		-f Containerfile \
-		--build-arg ENCLAVE_APP=$(ENCLAVE_APP) \
-		.
+		."; \
+		$$DOCKER_CMD;
 
 .PHONY: run
 run: out/nitro.eif
+	test -f out/nitro.eif || (echo "EIF file not found, please run make first" && exit 1)
 	sudo nitro-cli \
 		run-enclave \
 		--cpu-count 2 \
-		--memory 512M \
-		--eif-path out/nitro.eif
+		--memory $(ENCLAVE_MEMORY) \
+		--eif-path $(PWD)/out/nitro.eif
 
 .PHONY: run-debug
 run-debug: out/nitro.eif
+	test -f out/nitro.eif || (echo "EIF file not found, please run make first" && exit 1)
 	sudo nitro-cli \
 		run-enclave \
 		--cpu-count 2 \
-		--memory 512M \
-		--eif-path out/nitro.eif \
+		--memory $(ENCLAVE_MEMORY) \
+		--eif-path $(PWD)/out/nitro.eif \
 		--debug-mode \
 		--attach-console
 
 .PHONY: update
 update:
 	./update.sh
+
+.PHONY: stop
+stop:
+	chmod +x ./reset_enclave.sh
+	./reset_enclave.sh
 

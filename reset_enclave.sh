@@ -1,3 +1,3 @@
 sudo nitro-cli terminate-enclave --all
-sudo killall socat
+sudo killall socat || true
 #

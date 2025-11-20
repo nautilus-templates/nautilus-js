@@ -10,3 +10,5 @@ secrets-policy.json
 
 /out
 /target
+**/node_modules
+src/nautilus-server/bun/node_modules

@@ -10,15 +10,15 @@ The Nautilus framework helps you deploy an AWS Nitro Enclave with all the necess
 
 In addition, the framework provides an onchain template that includes the minimal smart contract code required to register a Nautilus instance and its public key. As a Dapp developer, using Nautilus is as simple as:
 
-1. Implement the enclave in Rust with the desired computation logic.
+1. Implement the enclave in Typescript (Bun + Elysia) with the desired computation logic.
 2. Deploy a Move smart contract that stores the expected PCRs and allows updates by the contract deployer.
 3. Deploy the enclave instance on AWS and register it onchain using its attestation document.
 4. Upload signed responses from the registered enclave, verify them onchain, and consume the results in your smart contract.
 
 This guide walks you through the following steps:
 
-1. Writing and deploying a simple Nautilus offchain instance using AWS Nitro Enclaves. The example instance runs a server that fetches weather data for a specific location.
-2. Writing a Move smart contract that registers the enclave by verifying its attestation and public key, then verifies the Nautilus response (signature and payload) onchain and mints an NFT containing the location and temperature data.
+1. Writing and deploying a simple Nautilus offchain instance using AWS Nitro Enclaves. The example instance runs a server that verifies Twitter profiles.
+2. Writing a Move smart contract that registers the enclave by verifying its attestation and public key, then verifies the Nautilus response (signature and payload) onchain.
 
 The setup script performs the following actions:
 
@@ -29,38 +29,29 @@ The setup script performs the following actions:
 
 When the enclave starts, it generates a fresh enclave key pair and exposes the following two endpoints:
 
-- `health_check`: Probes all allowed domains inside the enclave. This logic is built into the template and does not require modification.
-- `get_attestation`: Returns a signed attestation document over the enclave public key. Use this during onchain registration. This logic is built into the template and doesn't require modification.
-- `process_data`: Fetches weather data from an external API, signs it with the enclave key, and returns the result. This logic is customizable and must be implemented by the developer.
+- `health_check`: Probes all allowed domains inside the enclave.
+- `get_attestation`: Returns a signed attestation document over the enclave public key. Use this during onchain registration.
+- `process_data`: The main application logic. In this template, it verifies a Twitter profile and signs the result. This logic is customizable in `elysia_server.ts`.
 
 ## Code structure
 
 ```shell
 /move
   /enclave          Utility functions for generating enclave config and registering the public key with an attestation document.
-  /weather-example  Entry point for onchain logic as an example, which uses enclave functions to run your Nautilus application logic.
-  /twitter-example  Entry point for onchain logic as another example, which uses enclave functions to run your Nautilus application logic. 
+  /twitter-example  Entry point for onchain logic as an example, which uses enclave functions to run your Nautilus application logic. 
 /src
   /nautilus-server  Nautilus server that runs inside the enclave.
-    /src
-      /apps
-        /weather-example  Example directory — replace with your own application logic as needed. 
-          mod.rs  The process_data endpoints and related artifacts to fetch weather data. Replace this with your offchain computation logic.
-          allowed_endpoints.yaml  This file lists all endpoints the enclave is allowed to access. By default, the enclave has no internet access unless the parent EC2 instance explicitly forwards traffic. During the configuration step, this file is used to generate the necessary code to enable limited traffic forwarding from the enclave. 
-        /twitter-example  Another example directory with similar parts as for above example. 
-          mod.rs
-          allowed_endpoints.yaml
-    run.sh          Runs the Rust server inside the enclave after configuring domains and the traffic forwarder. Do not modify.
-    common.rs       Common code for retrieving attestation. Do not modify. 
+    /bun
+      elysia_server.ts        The main server entry point. Modify this file to implement your application logic.
+      allowed_endpoints.yaml  List of allowed external endpoints.
+      package.json            Dependencies and scripts.
+      /common                 Nautilus infrastructure code (attestation, signing, etc.). Do not modify.
+    run.sh          Runs the server inside the enclave. Do not modify.
 ```
 
-To create your own Nautilus app:
-
-* Add a new directory under `move/my_app` for your Move modules.
-* Add a corresponding directory under `src/nautilus-server/src/apps/my_app` for your Rust server logic.
-* Use the existing app directories as references.
-* Build your frontend logic to interact with the deployed Move contract and enclave-hosted Rust server.
-* The rest of the template can remain largely unmodified, streamlining development while giving you full control over app-specific logic.
+* Modify `src/nautilus-server/bun/elysia_server.ts` to implement your offchain logic.
+* Update `src/nautilus-server/bun/allowed_endpoints.yaml` with any external APIs you need.
+* Add a new directory under `move/` for your Move contract if needed, or modify the existing `twitter-example`.
 
 > [!Note]
 > Frontend code is not included in this guide. The Move call is demonstrated using the CLI.
@@ -77,7 +68,7 @@ export AWS_ACCESS_KEY_ID=<your-access-key>
 export AWS_SECRET_ACCESS_KEY=<your-secret-key>
 export AWS_SESSION_TOKEN=<your-session-token>
 
-sh configure_enclave.sh <APP> # e.g. `sh configure_enclave.sh weather-example`
+sh configure_enclave.sh
 ```
 
 > [!NOTE]
@@ -91,17 +82,12 @@ sh configure_enclave.sh <APP> # e.g. `sh configure_enclave.sh weather-example`
 > - Set `KEY_PAIR` to the name of your existing AWS key pair or one you create. To create a key pair, refer to this [guide](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/create-key-pairs.html)
 > - You may need to create a vpc with a public subnet. Refer to this [guide](https://000058.awsstudygroup.com/2-prerequiste/2.1-createec2/2.1.2-createpublicsubnet/) for instructions.
 
-3. To run the weather example as-is, you don't need to modify `allowed_endpoints.yaml` since it already includes `api.weatherapi.com`. Follow the prompts to enter the required values. This step demonstrates how to store a secret (an API key) using AWS Secrets Manager, so the secret does not need to be included in the public application code.
-
+3. The script will prompt you for configuration. For the Twitter example, if you choose to use a secret, it refers to the API Bearer Token associated with your Twitter Developer account.
 ```shell
-Enter EC2 instance base name: weather # anything you like
+Enter EC2 instance base name: twitter-verifier
 Do you want to use a secret? (y/n): y
-Do you want to create a new secret or use an existing secret ARN? (new/existing): new
-Enter secret name: weather-api-key # anything you like
-Enter secret value: 045a27812dbe456392913223221306 # this is an example api key, you can get your own at weatherapi.com
-```
-
-For the Twitter example, this secret value refers to the API Bearer Token associated with your Twitter Developer account. 
+...
+``` 
 
 4. If completed successfully, changes will be generated in `/src/nautilus-server/run.sh` and `expose_enclave.sh`. Commit these changes, as they are required when building the enclave image.
 
@@ -115,12 +101,12 @@ For the Twitter example, this secret value refers to the API Bearer Token associ
 
 ```shell
 cd nautilus/
-make run ENCLAVE_APP=<APP> # this builds the enclave and runs it, e.g. `make run ENCLAVE_APP=weather-example`
-sh expose_enclave.sh # this exposes port 3000 to the Internet for traffic
+make run
+sh expose_enclave.sh
 ```
 
 > [!NOTE]
-> Use `make run-debug ENCLAVE_APP=<APP>` instead of `make run ENCLAVE_APP=<APP>` to run the enclave in debug mode. This will print all logs, which the production build does not. Note that in debug mode, the PCR values will be all zeros and are not valid for production use.
+> Use `make run-debug` instead of `make run` to run the enclave in debug mode. This will print all logs, which the production build does not. Note that in debug mode, the PCR values will be all zeros and are not valid for production use.
 
 7. Congratulations! You can now interact with the enclave from the outside world. You can find the `PUBLIC_IP` in the AWS console.
 
@@ -129,34 +115,28 @@ curl -H 'Content-Type: application/json' -X GET http://<PUBLIC_IP>:3000/health_c
 
 curl -H 'Content-Type: application/json' -X GET http://<PUBLIC_IP>:3000/get_attestation
 
-curl -H 'Content-Type: application/json' -d '{"payload": { "location": "San Francisco"}}' -X POST http://<PUBLIC_IP>:3000/process_data
+curl -H 'Content-Type: application/json' -d '{"payload": { "user_url": "https://x.com/Mysten_Labs/status/1234567890"}}' -X POST http://<PUBLIC_IP>:3000/process_data
 ```
 
 8. Optionally, you can set up an Application Load Balancer (ALB) for the EC2 instance with an SSL/TLS certificate from AWS Certificate Manager (ACM), and configure Amazon Route 53 for DNS routing. For more information, see the [AWS Certificate Manager User Guide](https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-request-public.html) and the [Application Load Balancer Guide](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html).
 
 ## Develop your own Nautilus server
 
-The Nautilus server logic lives in `src/nautilus-server`. To customize the application, refer to `apps/weather-example` or `apps/twitter-example` as templates:
+The Nautilus server logic lives in `src/nautilus-server/bun`.
+- `elysia_server.ts`: The main application logic. Modify this file to implement your specific requirements.
+- `allowed_endpoints.yaml`: Specify any external domains your application needs to access.
 
-- Define `allowed_endpoints.yaml` to specify any external domains your application needs to access.
-- Create `mod.rs` to define your `process_data` logic and register any additional endpoints.
-
-The following files typically do not require modification:
-
-- `common.rs` handles the `get_attestation` endpoint.
-- `main.rs` initializes the ephemeral key pair and sets up the HTTP server.
-
-You can test most functionality by running the server locally. However, the `get_attestation` endpoint won't work locally because it requires access to the Nitro Secure Module (NSM) driver, which is only available when running the code inside the configured EC2 instance. This endpoint will function correctly when the server runs within the enclave as described in the setup steps.
+You can test the server locally using Bun:
 
 To test the `process_data` endpoint locally, run the following:
 
 ```shell
-cd src/nautilus-server/
-RUST_LOG=debug API_KEY=045a27812dbe456392913223221306 cargo run --features=weather-example --bin nautilus-server
+cd src/nautilus-server/bun
+bun install
+API_KEY=your_key bun run elysia_server.ts
 
-curl -H 'Content-Type: application/json' -d '{"payload": { "location": "San Francisco"}}' -X POST http://localhost:3000/process_data
-
-{"response":{"intent":0,"timestamp_ms":1744041600000,"data":{"location":"San Francisco","temperature":13}},"signature":"b75d2d44c4a6b3c676fe087465c0e85206b101e21be6cda4c9ab2fd4ba5c0d8c623bf0166e274c5491a66001d254ce4c8c345b78411fdee7225111960cff250a"}
+# In another terminal
+curl -H 'Content-Type: application/json' -d '{"payload": { "user_url": "..."}}' -X POST http://localhost:3000/process_data
 ```
 
 ### Troubleshooting
@@ -188,7 +168,7 @@ Note that this includes any traffic forwarding changes made in `run.sh` (see bra
 
 ```shell
 cd nautilus/
-make ENCLAVE_APP=weather-example
+make
 
 cat out/nitro.pcrs
 
@@ -216,11 +196,11 @@ sui client publish
 ENCLAVE_PACKAGE_ID=0x3b009f952e11f0fa0612d0a8e07461fb69edc355d732e5d6e39267b1b4fd7138
 
 # deploy your dapp logic
-cd ../<APP>
+cd ../twitter-example
 sui move build
 sui client publish
 
-# record CAP_OBJECT_ID (owned object of type Cap), ENCLAVE_CONFIG_OBJECT_ID (shared object), APP_PACKAGE_ID (package containing weather module) as env var from publish output
+# record CAP_OBJECT_ID (owned object of type Cap), ENCLAVE_CONFIG_OBJECT_ID (shared object), APP_PACKAGE_ID (package containing twitter module) as env var from publish output
 
 CAP_OBJECT_ID=0xb232d20245ba2d624d1c1628c4fc062bd1d3249601385476d9736fc60c897d2b
 ENCLAVE_CONFIG_OBJECT_ID=0x9a50017ab37090ef4b5704eb24201c88b2e4bbad2aad1d4e69ecf1bdfbae9ccb
@@ -230,8 +210,8 @@ APP_PACKAGE_ID=0x097b551dec72f0c47e32e5f8114d0d12a98ab31762d21adff295f6d95d35315
 ENCLAVE_URL=<DEPLOYED_URL>
 
 # the module name and otw name used to create the dapp, defined in your Move code `fun init`
-MODULE_NAME=weather
-OTW_NAME=WEATHER
+MODULE_NAME=twitter
+OTW_NAME=TWITTER
 
 # make sure all env vars are populated
 echo $APP_PACKAGE_ID
@@ -253,7 +233,7 @@ echo $ENCLAVE_URL
 sui client call --function update_pcrs --module enclave --package $ENCLAVE_PACKAGE_ID --type-args "$APP_PACKAGE_ID::$MODULE_NAME::$OTW_NAME" --args $ENCLAVE_CONFIG_OBJECT_ID $CAP_OBJECT_ID 0x$PCR0 0x$PCR1 0x$PCR2
 
 # optional, give it a name you like
-sui client call --function update_name --module enclave --package $ENCLAVE_PACKAGE_ID --type-args "$APP_PACKAGE_ID::$MODULE_NAME::$OTW_NAME" --args $ENCLAVE_CONFIG_OBJECT_ID $CAP_OBJECT_ID "weather enclave, updated 2025-05-13"
+sui client call --function update_name --module enclave --package $ENCLAVE_PACKAGE_ID --type-args "$APP_PACKAGE_ID::$MODULE_NAME::$OTW_NAME" --args $ENCLAVE_CONFIG_OBJECT_ID $CAP_OBJECT_ID "twitter enclave, updated 2025-05-13"
 
 # this script calls the get_attestation endpoint from your enclave url and use it to calls register_enclave onchain to register the public key, results in the created enclave object
 sh ../../register_enclave.sh $ENCLAVE_PACKAGE_ID $APP_PACKAGE_ID $ENCLAVE_CONFIG_OBJECT_ID $ENCLAVE_URL $MODULE_NAME $OTW_NAME
@@ -264,32 +244,7 @@ ENCLAVE_OBJECT_ID=0x1c9ccfc0f391f5e679e1f9f7d53c7fa455bf977e0f6dc71222990401f359
 
 You can view an [example enclave config object](https://testnet.suivision.xyz/object/0x58a6a284aaea8c8e71151e4ae0de2350ae877f0bd94adc2b2d0266cf23b6b41d) containing PCR values on SuiScan. Additionally see an [example enclave object](https://testnet.suivision.xyz/object/0xe0e70df5347560a1b43e5954267cadd1386a562095cb4285f2581bf2974c838d) that includes the enclave’s registered public key.
 
-### Twitter example artifacts
 
-```
-cd nautilus/
-make ENCLAVE_APP=twitter-example
-
-cat out/nitro.pcrs
-
-# Add env var that will be used later when registering the enclave.
-PCR0=18ae33028ded7643ab797342ec47b74f0efc7a690f7cb848db580e8851279fc4a4ef35816c51e8382aa358ef8e94781d
-PCR1=18ae33028ded7643ab797342ec47b74f0efc7a690f7cb848db580e8851279fc4a4ef35816c51e8382aa358ef8e94781d
-PCR2=21b9efbc184807662e966d34f390821309eeac6802309798826296bf3e8bec7c10edb30948c90ba67310f7b964fc500a
-
-MODULE_NAME=twitter
-OTW_NAME=TWITTER
-
-# replace with your registered enclave
-ENCLAVE_PACKAGE_ID=0xcca410b231d0acfa92c7709d490ab2f15fb5619be719ee0786099ffc3f6c9ab8
-APP_PACKAGE_ID=0x652875162b566bb04187c76f93215e56c28aa05487393056279e331598ba4978
-CAP_OBJECT_ID=0x44f3b57aa3870762ad334424cccb7f4c785cac007baab7e987c6d6a43c6aa100
-ENCLAVE_CONFIG_OBJECT_ID=0xe33641a2dae5eb4acad3859e603ec4e25641af05f837c85058645c7d8d9d831a
-ENCLAVE_OBJECT_ID=0x53db077721140910697668f9b2ee80fbecd104ac076d60fc1fb49ae57cd96c0d
-
-# replace with your own enclave IP
-ENCLAVE_URL=http://<PUBLIC_IP>:3000
-```
 
 You can view an [example enclave config object](https://testnet.suivision.xyz/object/0xe33641a2dae5eb4acad3859e603ec4e25641af05f837c85058645c7d8d9d831a) containing PCR values. You can also view an [example enclave object](https://testnet.suivision.xyz/object/0x53db077721140910697668f9b2ee80fbecd104ac076d60fc1fb49ae57cd96c0d) that includes the registered enclave public key.
 
@@ -303,40 +258,21 @@ This design allows the admin to run multiple instances of the same enclave with 
 
 ### Update PCRs
 
-The deployer of the smart contract holds the `EnclaveCap`, which allows for updating the PCRs and enclave public key if the Nautilus server code has been modified. You can retrieve the new PCRs using `make ENCLAVE_APP=<APP> && cat out/nitro.pcrs`. To update the PCRs or register the enclave again, reuse the steps outlined in the section above.
+The deployer of the smart contract holds the `EnclaveCap`, which allows for updating the PCRs and enclave public key if the Nautilus server code has been modified. You can retrieve the new PCRs using `make && cat out/nitro.pcrs`. To update the PCRs or register the enclave again, reuse the steps outlined in the section above.
 
 ## Using the verified computation in Move
 
-You can now write your frontend code to interact with the enclave for computation, and then send the resulting data to the Move contract for use. For the weather example, you can request the enclave to retrieve weather data for a specific location:
+For the Twitter example, you can request the enclave to verify a tweet:
 
 ```shell
-curl -H 'Content-Type: application/json' -d '{"payload": { "location": "San Francisco"}}' -X POST http://<PUBLIC_IP>:3000/process_data
-
-
-{"response":{"intent":0,"timestamp_ms":1744683300000,"data":{"location":"San Francisco","temperature":13}},"signature":"77b6d8be225440d00f3d6eb52e91076a8927cebfb520e58c19daf31ecf06b3798ec3d3ce9630a9eceee46d24f057794a60dd781657cb06d952269cfc5ae19500"}
+curl -H 'Content-Type: application/json' -d '{"payload": { "user_url": "https://x.com/Mysten_Labs/status/1234567890"}}' -X POST http://<PUBLIC_IP>:3000/process_data
 ```
-
-Then use the values from the enclave response - signature, timestamp, location, and temperature - to call `update_weather` in the Move contract. In this example, the call is demonstrated using a script, but it should be integrated into your Dapp frontend.
-
-```shell
-sh ../../update_weather.sh \
-    $APP_PACKAGE_ID \
-    $MODULE_NAME \
-    $OTW_NAME \
-    $ENCLAVE_OBJECT_ID \
-    "77b6d8be225440d00f3d6eb52e91076a8927cebfb520e58c19daf31ecf06b3798ec3d3ce9630a9eceee46d24f057794a60dd781657cb06d952269cfc5ae19500" \
-    1744683300000 \
-    "San Francisco" \
-    13
-```
-
-An example of a created weather NFT can be viewed [here](https://testnet.suivision.xyz/object/0xa78e166630c0ed004b3115b474fed15d71f27fc80b68e37d451494c6e815931e).
 
 ### Signing payload
 
 Signing payloads in Move are constructed using BCS (Binary Canonical Serialization). These must match the structure specified in the enclave’s Rust code when generating the signature; otherwise, signature verification in `enclave.move` may fail.
 
-It’s recommended to write unit tests in both Move and Rust to ensure consistency. See `test_serde()` in `src/nautilus-server/src/app.rs` and the examples in `move/enclave/enclave.move`.
+It’s recommended to write unit tests in both Move and Typescript to ensure consistency.
 
 ## FAQs
 
@@ -362,3 +298,88 @@ sha256sum root.pem
 ```
 
 [Back to table of contents](#table-of-contents)
+
+## AWS Nitro Enclaves Deployment
+
+This section integrates the AWS Nitro Enclaves deployment guide and provides a streamlined path to run the enclave on AWS EC2 with Nitro Enclaves, exposing `3000` and `9184` ports and enabling attestation and metrics.
+
+### Overview
+- Goal: Deploy the Nautilus template on AWS EC2 + Nitro Enclaves and expose `3000`/`9184`.
+- Endpoints: `health_check`, `get_attestation`, `process_data` available; metrics on `9184`.
+- Reproducibility: PCRs reproducible via `out/nitro.pcrs`.
+
+### Prerequisites
+- macOS: `brew install awscli jq yq`
+- Linux: `sudo apt-get/dnf install -y awscli jq yq`
+- AWS CLI: `aws configure` (or set `AWS_PROFILE`, and include `AWS_SESSION_TOKEN` if using temporary credentials)
+- SSH key: ensure `.pem` permissions `chmod 600 ~/.ssh/<your>.pem`
+
+### AWS Region and AMI
+- Default `REGION=us-east-1`
+- Default `AMI_ID=ami-085ad6ae776d8f09c` (Amazon Linux 2023)
+- Key Pair name: `aws ec2 describe-key-pairs --region <REGION>` → `export KEY_PAIR=<your-keypair>`
+- Public IP: `aws ec2 describe-instances --region <REGION> --query "Reservations[*].Instances[*].[PublicIpAddress]" --output table`
+
+### Configure locally
+```sh
+cd <Template Root Path>
+export KEY_PAIR=<your-keypair>
+export REGION=us-east-1
+# optional: export AMI_ID=ami-085ad6ae776d8f09c
+sh configure_enclave.sh
+```
+- The script will:
+  - Reuse/create VPC, subnet, security group
+  - Generate and update `expose_enclave.sh` and `src/nautilus-server/run.sh`
+  - Enable `vsock-proxy` on the parent EC2 instance
+  - Output `InstanceId` and `PUBLIC_IP`
+- Commit generated files:
+```sh
+git add expose_enclave.sh src/nautilus-server/run.sh && git commit -m "Configure enclave"
+```
+
+### Build and run on EC2
+```sh
+rsync -av --exclude-from=.scpignore --delete --delete-excluded -e "ssh -i ~/.ssh/<your>.pem" ./ ec2-user@<PUBLIC_IP>:~/nautilus/
+ssh -i ~/.ssh/<your>.pem ec2-user@<PUBLIC_IP>
+cd ~/nautilus
+make stop-all
+make && make run       # debug: make run-debug (PCRs all zeros)
+sh expose_enclave.sh   # expose 3000/9184 and inject secrets
+```
+
+### Verification
+```sh
+nitro-cli describe-enclaves
+curl -H 'Content-Type: application/json' -X GET http://<PUBLIC_IP>:3000/health_check
+curl -H 'Content-Type: application/json' -X GET http://<PUBLIC_IP>:3000/get_attestation
+curl -H 'Content-Type: application/json' -d '{"payload":{"user_url":"https://x.com/.../status/..."}}' -X POST http://<PUBLIC_IP>:3000/process_data
+```
+
+### Reproduce PCRs
+```sh
+cd ~/nautilus && make && cat out/nitro.pcrs
+```
+
+### Troubleshooting
+- SSH failure (Connection reset): open inbound `22`; ensure `chmod 600` on key; username `ec2-user`; confirm instance `running` and public IP.
+- `health_check` domain false:
+  - Parent proxy: `sudo pgrep -a vsock-proxy`; if not running: `sudo nohup vsock-proxy 8101 api.twitter.com 443 >/var/log/vsock-proxy-8101.log 2>&1 &`
+  - Parent internet: from EC2 test `nc -vz api.twitter.com 443`
+- Ports unreachable: open inbound `3000/9184` and run `sh expose_enclave.sh`.
+- Reset:
+```sh
+cd ~/nautilus && make stop-all && make && make run && sh expose_enclave.sh
+```
+
+### Terminate instance
+```sh
+aws ec2 describe-instances --region us-east-1 --query "Reservations[*].Instances[*].[InstanceId,State.Name,Tags]"
+aws ec2 terminate-instances --instance-ids <INSTANCE_ID> --region us-east-1
+```
+
+### Environment variables
+- `KEY_PAIR`: AWS Key Pair name (e.g., `aws-ec2-tee-keypair`)
+- `REGION`: defaults to `us-east-1`
+- `AMI_ID`: defaults to `ami-085ad6ae776d8f09c`
+- `API_ENV_VAR_NAME`: defaults to `API_KEY` (injected into enclave)

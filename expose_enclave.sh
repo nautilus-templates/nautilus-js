@@ -1,6 +1,6 @@
+#!/bin/bash
 # Copyright (c), Mysten Labs, Inc.
 # SPDX-License-Identifier: Apache-2.0
-#!/bin/bash
 
 # Gets the enclave id and CID
 # expects there to be only one enclave running
@@ -9,6 +9,22 @@ ENCLAVE_CID=$(nitro-cli describe-enclaves | jq -r ".[0].EnclaveCID")
 
 sleep 5
 # Secrets-block
+SECRET_VALUE=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-east-1:734343938194:secret:API_KEY-068KOa --region us-east-1 | jq -r .SecretString)
+echo "$SECRET_VALUE" | jq -R '{"API_KEY": .}' > secrets.json
+
+
+
+
+
+
+
+
+
+
+
+
+# No secrets: create empty secrets.json for compatibility
+
 # This section will be populated by configure_enclave.sh based on secret configuration
 
 cat secrets.json | socat - VSOCK-CONNECT:$ENCLAVE_CID:7777
