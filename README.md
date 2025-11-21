@@ -9,3 +9,6 @@ This repository includes a reproducible build template for AWS Nitro Enclaves, a
 
 ## Contact Us
 For questions about Nautilus, use case discussions, or integration support, contact the Nautilus team on [Sui Discord](https://discord.com/channels/916379725201563759/1361500579603546223).
+
+
+<img width="3022" height="1808" alt="image" src="https://github.com/user-attachments/assets/482b85dd-a6c9-49de-bbdb-e9b5a89bdce0" />
